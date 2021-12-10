@@ -1,6 +1,8 @@
 package fixtures
 
-import "time"
+import (
+	"time"
+)
 
 type Author struct {
 	ID      string
@@ -12,6 +14,7 @@ type Author struct {
 }
 
 type Book struct {
-	ID   string
-	Name string
+	ID    string `bson:"_id"`
+	Name  string
+	Pages uint
 }
