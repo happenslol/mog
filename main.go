@@ -34,9 +34,14 @@ func (_[[ $strct.Name ]]) [[ $fld.Name ]](filter interface{}) bson.D {
 [[ end ]]
 `
 
+type Config struct {
+	Structs []string
+}
+
 type StructsTemplateInput struct {
 	PackageName string
 	Structs     []*Strct
+	Imports     []string
 }
 
 type Strct struct {
@@ -54,33 +59,46 @@ var structsTemplate = template.Must(
 	template.New("structs").Delims("[[", "]]").Parse(structsTemplateRaw))
 
 func main() {
-	testPath := "github.com/happenslol/mog/fixtures.Book"
-	err := generateCollectionForStruct(testPath, os.Stdout)
+	testPath := "github.com/happenslol/mog/fixtures.Author"
+	err := generateCollections([]string{testPath}, os.Stdout)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func generateCollectionForStruct(uid string, out io.Writer) error {
-	spec, err := findTypeSpec(uid)
-	if err != nil {
-		return err
-	}
-
-	strct, err := parseStruct(uid, spec)
-	if err != nil {
-		return err
-	}
-
+func generateCollections(uids []string, out io.Writer) error {
 	input := StructsTemplateInput{
 		PackageName: "strcts",
-		Structs:     []*Strct{strct},
+		Structs:     []*Strct{},
+		Imports:     []string{},
+	}
+
+	imports := map[string]struct{}{}
+
+	for _, uid := range uids {
+		spec, err := findTypeSpec(uid)
+		if err != nil {
+			return err
+		}
+
+		strctType, ok := spec.Type.(*ast.StructType)
+		if !ok {
+			return fmt.Errorf("Type `%s` is not a struct", uid)
+		}
+
+		fields := parseFields(strctType.Fields.List)
+		input.Structs = append(input.Structs, &Strct{
+			Name:   spec.Name.Name,
+			Fields: fields})
 	}
 
 	buf := new(bytes.Buffer)
-	err = structsTemplate.Execute(buf, input)
-	if err != nil {
+	if err := structsTemplate.Execute(buf, input); err != nil {
 		return err
+	}
+
+	for imp := range imports {
+		input.Imports = append(input.Imports, imp)
 	}
 
 	formatted, err := format.Source(buf.Bytes())
@@ -92,30 +110,15 @@ func generateCollectionForStruct(uid string, out io.Writer) error {
 	return err
 }
 
-func parseStruct(uid string, spec *ast.TypeSpec) (*Strct, error) {
-	strctType, ok := spec.Type.(*ast.StructType)
-	if !ok {
-		return nil, fmt.Errorf("Type `%s` is not a struct", uid)
-	}
-
-	fields := parseFields(strctType.Fields.List)
-
-	return &Strct{
-		Name:   spec.Name.Name,
-		Fields: fields,
-	}, nil
-}
-
 func parseFields(flds []*ast.Field) []Field {
 	result := []Field{}
 
 	for _, fld := range flds {
-		ide := fld.Type.(*ast.Ident)
-
 		for _, name := range fld.Names {
 			var tag reflect.StructTag
 			if fld.Tag != nil {
-				tag = reflect.StructTag(fld.Tag.Value)
+				unquoted := strings.ReplaceAll(fld.Tag.Value, "`", "")
+				tag = reflect.StructTag(unquoted)
 			}
 
 			dummyStructField := reflect.StructField{
@@ -126,12 +129,15 @@ func parseFields(flds []*ast.Field) []Field {
 			// NOTE: This function never returns an err, so
 			// we can safely ignore it.
 			mongoTags, _ := bsoncodec.DefaultStructTagParser(dummyStructField)
+			if mongoTags.Skip {
+				continue
+			}
+
 			bsonKey := mongoTags.Name
 
 			result = append(result, Field{
 				Name:    name.Name,
-				BsonKey: bsonKey,
-				Type:    ide.Name})
+				BsonKey: bsonKey})
 		}
 	}
 
