@@ -17,12 +17,7 @@ import (
 
 const structsTemplateRaw = `package [[ .PackageName ]]
 
-import (
-	"go.mongodb.org/mongo-driver/bson"
-	[[ range $imp := .Imports ]]
-	"[[ $imp ]]"
-	[[ end ]]
-)
+import "go.mongodb.org/mongo-driver/bson"
 
 [[ range $strct := .Structs ]]
 type _[[ $strct.Name ]] struct{}
