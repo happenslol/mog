@@ -6,5 +6,7 @@ primitives:
 - github.com/happenslol/mog/testdata.CustomID
 
 collections:
-- model: github.com/happenslol/mog/testdata.Author
-- model: github.com/happenslol/mog/testdata.Book
+  authors:
+    model: github.com/happenslol/mog/testdata.Author
+  books:
+    model: github.com/happenslol/mog/testdata.Book

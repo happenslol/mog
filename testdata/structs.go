@@ -1,4 +1,4 @@
-package fixtures
+package testdata
 
 import (
 	"time"
