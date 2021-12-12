@@ -15,9 +15,16 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const structsTemplateRaw = `package [[ .PackageName ]]
+const tmplRaw = `package [[ .PackageName ]]
 
-import "go.mongodb.org/mongo-driver/bson"
+import (
+	"go.mongodb.org/mongo-driver/bson"
+	"github.com/happenslol/mog/util"
+
+	[[ range $imp := .Imports ]]
+	"[[ $imp ]]"
+	[[ end ]]
+)
 
 [[ range $strct := .Structs ]]
 type _[[ $strct.Name ]] struct{}
@@ -35,13 +42,19 @@ func (_[[ $strct.Name ]]) [[ $fld.Name ]](filter interface{}) bson.D {
 `
 
 type Config struct {
-	Structs    []string
-	Primitives []string
+	Package     string
+	Collections map[string]CollectionConfig
+	Primitives  []string
 }
 
-type StructsTemplateInput struct {
+type CollectionConfig struct {
+	Model string
+}
+
+type TemplateInput struct {
 	PackageName string
-	Structs     []*Strct
+	Collections map[string]string
+	Structs     []Strct
 	Imports     []string
 }
 
@@ -56,62 +69,64 @@ type Field struct {
 	Type    string
 }
 
-var structsTemplate = template.Must(
-	template.New("structs").Delims("[[", "]]").Parse(structsTemplateRaw))
+var builtinPrimitives = []string{
+	".uint",
+	".uintptr",
+	".uint8",
+	".uint16",
+	".uint32",
+	".uint64",
+
+	".int",
+	".int8",
+	".int16",
+	".int32",
+	".int64",
+
+	".float32",
+	".float64",
+
+	".complex64",
+	".complex128",
+
+	".byte",
+	".rune",
+	".string",
+	".bool",
+
+	"time.Time",
+}
+
+var tmpl = template.Must(
+	template.New("mog-codegen").Delims("[[", "]]").Parse(tmplRaw))
 
 func main() {
-	cfg := &Config{
-		Structs: []string{
-			"github.com/happenslol/mog/fixtures.Author",
-		},
-		Primitives: []string{
-			".uint",
-			".uintptr",
-			".uint8",
-			".uint16",
-			".uint32",
-			".uint64",
+	cfg := &Config{}
 
-			".int",
-			".int8",
-			".int16",
-			".int32",
-			".int64",
-
-			".float32",
-			".float64",
-
-			".complex64",
-			".complex128",
-
-			".byte",
-			".rune",
-			".string",
-			".bool",
-
-			"time.Time",
-		},
-	}
-
-	strcts := map[string]*Strct{}
+	strcts := map[string]Strct{}
 	knownImports := map[string]string{}
 	usedImports := map[string]struct{}{}
+	modelImports := map[string]struct{}{}
 
 	primitives := map[string]struct{}{}
+	for _, p := range builtinPrimitives {
+		primitives[p] = struct{}{}
+	}
+
 	for _, p := range cfg.Primitives {
 		primitives[p] = struct{}{}
 	}
 
-	for _, uid := range cfg.Structs {
-		err := generateCollections(uid, strcts, primitives, knownImports, usedImports)
-		if err != nil {
+	for _, col := range cfg.Collections {
+		if err := generateStructMethods(col.Model, strcts, primitives,
+			knownImports, usedImports, modelImports); err != nil {
 			panic(err)
 		}
 	}
 
-	input := &StructsTemplateInput{
-		PackageName: "strcts",
-		Structs:     []*Strct{},
+	input := &TemplateInput{
+		PackageName: cfg.Package,
+		Structs:     []Strct{},
 		Imports:     []string{},
 	}
 
@@ -119,7 +134,7 @@ func main() {
 		input.Structs = append(input.Structs, s)
 	}
 
-	for imp := range usedImports {
+	for imp := range modelImports {
 		input.Imports = append(input.Imports, imp)
 	}
 
@@ -128,17 +143,20 @@ func main() {
 	}
 }
 
-func generateCollections(
+func generateStructMethods(
 	uid string,
-	strcts map[string]*Strct,
+	strcts map[string]Strct,
 	primitives map[string]struct{},
 	knownImports map[string]string,
 	usedImports map[string]struct{},
+	modelImports map[string]struct{},
 ) error {
 	basePkg, _, err := splitPackageUID(uid)
 	if err != nil {
 		return err
 	}
+
+	modelImports[basePkg] = struct{}{}
 
 	structQueue := []string{uid}
 	dotImports := []string{}
@@ -189,7 +207,7 @@ func generateCollections(
 		fields, typs := parseFields(strctType.Fields.List,
 			knownImports, usedImports, primitives)
 
-		strcts[uid] = &Strct{
+		strcts[uid] = Strct{
 			Name:   spec.Name.Name,
 			Fields: fields}
 
@@ -199,9 +217,9 @@ func generateCollections(
 	return nil
 }
 
-func writeFormattedOutput(input *StructsTemplateInput, out io.Writer) error {
+func writeFormattedOutput(input *TemplateInput, out io.Writer) error {
 	buf := new(bytes.Buffer)
-	if err := structsTemplate.Execute(buf, input); err != nil {
+	if err := tmpl.Execute(buf, input); err != nil {
 		return err
 	}
 
