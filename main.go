@@ -136,17 +136,26 @@ func main() {
 		primitives[p] = struct{}{}
 	}
 
-	for _, col := range config.Collections {
-		if err := generateStructMethods(col.Model, strcts, primitives,
+	input := &TemplateInput{
+		PackageName: config.Output.Package,
+		Collections: map[string]string{},
+		Structs:     []Strct{},
+		Imports:     []string{},
+	}
+
+	for colName, col := range config.Collections {
+		basePkg, name, err := splitPackageUID(col.Model)
+		if err != nil {
+			panic(err)
+		}
+
+		parts := strings.Split(basePkg, "/")
+		input.Collections[colName] = fmt.Sprintf("%s.%s", parts[len(parts)-1], name)
+
+		if err := generateStructMethods(col.Model, basePkg, strcts, primitives,
 			knownImports, usedImports, modelImports); err != nil {
 			panic(err)
 		}
-	}
-
-	input := &TemplateInput{
-		PackageName: config.Output.Package,
-		Structs:     []Strct{},
-		Imports:     []string{},
 	}
 
 	for _, s := range strcts {
@@ -169,17 +178,13 @@ func main() {
 
 func generateStructMethods(
 	uid string,
+	basePkg string,
 	strcts map[string]Strct,
 	primitives map[string]struct{},
 	knownImports map[string]string,
 	usedImports map[string]struct{},
 	modelImports map[string]struct{},
 ) error {
-	basePkg, _, err := splitPackageUID(uid)
-	if err != nil {
-		return err
-	}
-
 	modelImports[basePkg] = struct{}{}
 
 	structQueue := []string{uid}

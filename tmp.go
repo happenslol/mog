@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/happenslol/mog/testdata"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -42,23 +43,23 @@ func (c *UsersCollection) BulkWrite(ctx context.Context, models []mongo.WriteMod
 }
 
 func (c *UsersCollection) InsertOne(ctx context.Context, document interface{},
-	opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
-	return nil, nil
+	opts ...*options.InsertOneOptions) (string, error) {
+	return "", nil
 }
 
 func (c *UsersCollection) InsertMany(ctx context.Context, documents []interface{},
-	opts ...*options.InsertManyOptions) (*mongo.InsertManyResult, error) {
-	return nil, nil
+	opts ...*options.InsertManyOptions) (string, error) {
+	return "", nil
 }
 
 func (c *UsersCollection) DeleteOne(ctx context.Context, filter interface{},
-	opts ...*options.DeleteOptions) (*mongo.DeleteResult, error) {
-	return nil, nil
+	opts ...*options.DeleteOptions) (int64, error) {
+	return 0, nil
 }
 
 func (c *UsersCollection) DeleteMany(ctx context.Context, filter interface{},
-	opts ...*options.DeleteOptions) (*mongo.DeleteResult, error) {
-	return nil, nil
+	opts ...*options.DeleteOptions) (int64, error) {
+	return 0, nil
 }
 
 func (c *UsersCollection) UpdateByID(ctx context.Context, id interface{}, update interface{},
@@ -82,8 +83,8 @@ func (c *UsersCollection) ReplaceOne(ctx context.Context, filter interface{},
 }
 
 func (c *UsersCollection) Aggregate(ctx context.Context, pipeline interface{},
-	opts ...*options.AggregateOptions) (*mongo.Cursor, error) {
-	return nil, nil
+	v interface{}, opts ...*options.AggregateOptions) error {
+	return nil
 }
 
 func (c *UsersCollection) CountDocuments(ctx context.Context, filter interface{},
@@ -97,32 +98,32 @@ func (c *UsersCollection) EstimatedDocumentCount(ctx context.Context,
 }
 
 func (c *UsersCollection) Distinct(ctx context.Context, fieldName string, filter interface{},
-	opts ...*options.DistinctOptions) ([]interface{}, error) {
+	opts ...*options.DistinctOptions) ([]*testdata.Author, error) {
 	return nil, nil
 }
 
 func (c *UsersCollection) Find(ctx context.Context, filter interface{},
-	opts ...*options.FindOptions) (*mongo.Cursor, error) {
+	opts ...*options.FindOptions) ([]*testdata.Author, error) {
 	return nil, nil
 }
 
 func (c *UsersCollection) FindOne(ctx context.Context, filter interface{},
-	opts ...*options.FindOneOptions) *mongo.SingleResult {
+	opts ...*options.FindOneOptions) *testdata.Author {
 	return nil
 }
 
 func (c *UsersCollection) FindOneAndDelete(ctx context.Context, filter interface{},
-	opts ...*options.FindOneAndDeleteOptions) *mongo.SingleResult {
+	opts ...*options.FindOneAndDeleteOptions) *testdata.Author {
 	return nil
 }
 
 func (c *UsersCollection) FindOneAndReplace(ctx context.Context, filter interface{},
-	replacement interface{}, opts ...*options.FindOneAndReplaceOptions) *mongo.SingleResult {
+	replacement interface{}, opts ...*options.FindOneAndReplaceOptions) *testdata.Author {
 	return nil
 }
 
 func (c *UsersCollection) FindOneAndUpdate(ctx context.Context, filter interface{},
-	update interface{}, opts ...*options.FindOneAndUpdateOptions) *mongo.SingleResult {
+	update interface{}, opts ...*options.FindOneAndUpdateOptions) *testdata.Author {
 	return nil
 }
 
