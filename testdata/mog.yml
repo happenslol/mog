@@ -1,0 +1,10 @@
+output:
+  package: mongogen
+  filename: mongogen/gen.go
+
+primitives:
+- github.com/happenslol/mog/testdata.CustomID
+
+collections:
+- model: github.com/happenslol/mog/testdata.Author
+- model: github.com/happenslol/mog/testdata.Book

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -13,6 +14,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson/bsoncodec"
 	"golang.org/x/tools/go/packages"
+	"gopkg.in/yaml.v3"
 )
 
 const tmplRaw = `package [[ .PackageName ]]
@@ -42,9 +44,14 @@ func (_[[ $strct.Name ]]) [[ $fld.Name ]](filter interface{}) bson.D {
 `
 
 type Config struct {
-	Package     string
-	Collections map[string]CollectionConfig
+	Output      OutputConfig
 	Primitives  []string
+	Collections map[string]CollectionConfig
+}
+
+type OutputConfig struct {
+	Package  string
+	Filename string
 }
 
 type CollectionConfig struct {
@@ -101,7 +108,19 @@ var tmpl = template.Must(
 	template.New("mog-codegen").Delims("[[", "]]").Parse(tmplRaw))
 
 func main() {
-	cfg := &Config{}
+	configPath := ""
+	flag.StringVar(&configPath, "c", "mog.yml", "set config file location")
+	flag.Parse()
+
+	rawConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to read config: %s", err.Error()))
+	}
+
+	var config Config
+	if err := yaml.Unmarshal(rawConfig, &config); err != nil {
+		panic(fmt.Sprintf("Failed to parse config: %s", err.Error()))
+	}
 
 	strcts := map[string]Strct{}
 	knownImports := map[string]string{}
@@ -113,11 +132,11 @@ func main() {
 		primitives[p] = struct{}{}
 	}
 
-	for _, p := range cfg.Primitives {
+	for _, p := range config.Primitives {
 		primitives[p] = struct{}{}
 	}
 
-	for _, col := range cfg.Collections {
+	for _, col := range config.Collections {
 		if err := generateStructMethods(col.Model, strcts, primitives,
 			knownImports, usedImports, modelImports); err != nil {
 			panic(err)
@@ -125,7 +144,7 @@ func main() {
 	}
 
 	input := &TemplateInput{
-		PackageName: cfg.Package,
+		PackageName: config.Output.Package,
 		Structs:     []Strct{},
 		Imports:     []string{},
 	}
@@ -138,7 +157,12 @@ func main() {
 		input.Imports = append(input.Imports, imp)
 	}
 
-	if err := writeFormattedOutput(input, os.Stdout); err != nil {
+	outputFile, err := os.Create(config.Output.Filename)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create output file: %s", err.Error()))
+	}
+
+	if err := writeFormattedOutput(input, outputFile); err != nil {
 		panic(err)
 	}
 }
@@ -175,6 +199,11 @@ func generateStructMethods(
 
 		if strings.HasPrefix(uid, ".") {
 			uid = basePkg + uid
+		}
+
+		// Check again if we had a dot import before
+		if _, ok := primitives[uid]; ok {
+			continue
 		}
 
 		spec, foundImports, err := findTypeSpec(uid)
