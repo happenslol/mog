@@ -6,42 +6,18 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
+	"go/printer"
+	"go/token"
 	"io"
 	"os"
 	"reflect"
 	"strings"
-	"text/template"
 
+	"github.com/happenslol/mog/templates"
 	"go.mongodb.org/mongo-driver/bson/bsoncodec"
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v3"
 )
-
-const tmplRaw = `package [[ .PackageName ]]
-
-import (
-	"go.mongodb.org/mongo-driver/bson"
-	"github.com/happenslol/mog/util"
-
-	[[ range $imp := .Imports ]]
-	"[[ $imp ]]"
-	[[ end ]]
-)
-
-[[ range $strct := .Structs ]]
-type _[[ $strct.Name ]] struct{}
-
-var [[ $strct.Name ]] = new(_[[ $strct.Name ]])
-
-[[ range $fld := $strct.Fields ]]
-func (_[[ $strct.Name ]]) [[ $fld.Name ]](filter interface{}) bson.D {
-	return bson.D{{
-		Key: "[[ $fld.BsonKey ]]",
-		Value: filter}}
-}
-[[ end ]]
-[[ end ]]
-`
 
 type Config struct {
 	Output      OutputConfig
@@ -60,9 +36,15 @@ type CollectionConfig struct {
 
 type TemplateInput struct {
 	PackageName string
-	Collections map[string]string
+	Collections map[string]CollectionInput
 	Structs     []Strct
 	Imports     []string
+}
+
+type CollectionInput struct {
+	ModelType      string
+	CollectionType string
+	IDType         string
 }
 
 type Strct struct {
@@ -104,8 +86,9 @@ var builtinPrimitives = []string{
 	"time.Time",
 }
 
-var tmpl = template.Must(
-	template.New("mog-codegen").Delims("[[", "]]").Parse(tmplRaw))
+var defaultUsedImports = []string{
+	"time",
+}
 
 func main() {
 	configPath := ""
@@ -127,6 +110,10 @@ func main() {
 	usedImports := map[string]struct{}{}
 	modelImports := map[string]struct{}{}
 
+	for _, imp := range defaultUsedImports {
+		modelImports[imp] = struct{}{}
+	}
+
 	primitives := map[string]struct{}{}
 	for _, p := range builtinPrimitives {
 		primitives[p] = struct{}{}
@@ -138,7 +125,7 @@ func main() {
 
 	input := &TemplateInput{
 		PackageName: config.Output.Package,
-		Collections: map[string]string{},
+		Collections: map[string]CollectionInput{},
 		Structs:     []Strct{},
 		Imports:     []string{},
 	}
@@ -149,12 +136,25 @@ func main() {
 			panic(err)
 		}
 
-		parts := strings.Split(basePkg, "/")
-		input.Collections[colName] = fmt.Sprintf("%s.%s", parts[len(parts)-1], name)
-
 		if err := generateStructMethods(col.Model, basePkg, strcts, primitives,
 			knownImports, usedImports, modelImports); err != nil {
 			panic(err)
+		}
+
+		parts := strings.Split(basePkg, "/")
+		modelType := fmt.Sprintf("%s.%s", parts[len(parts)-1], name)
+
+		// Find our struct from the struct list. It's guaranteed to
+		// be there if the previous function did not error out.
+		strct := strcts[col.Model]
+		idType := findIDType(strct, modelImports)
+
+		collectionType := fmt.Sprintf("%sCollection", strings.Title(colName))
+
+		input.Collections[colName] = CollectionInput{
+			ModelType:      modelType,
+			IDType:         idType,
+			CollectionType: collectionType,
 		}
 	}
 
@@ -174,6 +174,22 @@ func main() {
 	if err := writeFormattedOutput(input, outputFile); err != nil {
 		panic(err)
 	}
+}
+
+func findIDType(strct Strct, modelImports map[string]struct{}) string {
+	for _, fld := range strct.Fields {
+		// If one of the existing fields is the index field, we don't
+		// need any extra imports since it will already be imported
+		// for the field helper methods
+		if fld.BsonKey == "_id" {
+			return fld.Type
+		}
+	}
+
+	// If we drop through, there's no explicit ID key and
+	// we use primitive.ObjectID, which also needs an import.
+	modelImports["go.mongodb.org/mongo-driver/bson/primitive"] = struct{}{}
+	return "primitive.ObjectID"
 }
 
 func generateStructMethods(
@@ -211,7 +227,7 @@ func generateStructMethods(
 			continue
 		}
 
-		spec, foundImports, err := findTypeSpec(uid)
+		spec, fset, foundImports, err := findTypeSpec(uid)
 		if err != nil {
 			return err
 		}
@@ -238,7 +254,7 @@ func generateStructMethods(
 			return fmt.Errorf("Type `%s` is not a struct", uid)
 		}
 
-		fields, typs := parseFields(strctType.Fields.List,
+		fields, typs := parseFields(fset, strctType.Fields.List,
 			knownImports, usedImports, primitives)
 
 		strcts[uid] = Strct{
@@ -253,7 +269,7 @@ func generateStructMethods(
 
 func writeFormattedOutput(input *TemplateInput, out io.Writer) error {
 	buf := new(bytes.Buffer)
-	if err := tmpl.Execute(buf, input); err != nil {
+	if err := templates.Tmpl.Execute(buf, input); err != nil {
 		return err
 	}
 
@@ -267,6 +283,7 @@ func writeFormattedOutput(input *TemplateInput, out io.Writer) error {
 }
 
 func parseFields(
+	fset *token.FileSet,
 	flds []*ast.Field,
 	knownImports map[string]string,
 	usedImports map[string]struct{},
@@ -282,7 +299,7 @@ func parseFields(
 		foundTypes := parseReferencedTypes(spec, knownImports, usedImports, primitives)
 		referencedTypes = append(referencedTypes, foundTypes...)
 
-		field := parseFieldName(fld)
+		field := parseField(fld, fset)
 		if field == nil {
 			continue
 		}
@@ -293,10 +310,16 @@ func parseFields(
 	return
 }
 
-func parseFieldName(fld *ast.Field) *Field {
+func parseField(fld *ast.Field, fset *token.FileSet) *Field {
 	if fld.Names == nil {
 		// TODO: Implement embedded types
 		return nil
+	}
+
+	// TODO: This will not respect import aliases
+	b := bytes.NewBufferString("")
+	if err := printer.Fprint(b, fset, fld.Type); err != nil {
+		panic(fmt.Sprintf("Failed to print type: %s", err.Error()))
 	}
 
 	for _, name := range fld.Names {
@@ -321,6 +344,7 @@ func parseFieldName(fld *ast.Field) *Field {
 		return &Field{
 			Name:    name.Name,
 			BsonKey: mongoTags.Name,
+			Type:    b.String(),
 		}
 	}
 
@@ -392,17 +416,18 @@ func parseReferencedTypes(
 	return referencedTypes
 }
 
-func findTypeSpec(uid string) (*ast.TypeSpec, []*ast.ImportSpec, error) {
+func findTypeSpec(uid string) (*ast.TypeSpec, *token.FileSet, []*ast.ImportSpec, error) {
 	pkg, strct, err := splitPackageUID(uid)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	cfg := &packages.Config{Mode: packages.NeedFiles | packages.NeedSyntax}
+	cfg := &packages.Config{Mode: packages.NeedFiles |
+		packages.NeedSyntax | packages.NeedTypes}
 
 	pkgs, err := packages.Load(cfg, pkg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	for _, pkg := range pkgs {
@@ -420,14 +445,14 @@ func findTypeSpec(uid string) (*ast.TypeSpec, []*ast.ImportSpec, error) {
 					}
 
 					if strct == tspec.Name.String() {
-						return tspec, syn.Imports, nil
+						return tspec, pkg.Fset, syn.Imports, nil
 					}
 				}
 			}
 		}
 	}
 
-	return nil, nil, fmt.Errorf(
+	return nil, nil, nil, fmt.Errorf(
 		"Struct `%s` not found in module `%s`",
 		strct, pkg,
 	)
