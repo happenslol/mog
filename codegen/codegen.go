@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/types"
 	"reflect"
-	"strings"
 
 	"go.mongodb.org/mongo-driver/bson/bsoncodec"
 	"golang.org/x/tools/go/loader"
@@ -15,6 +14,7 @@ type Strct struct {
 	Fields          []Field
 	StructImport    string
 	EmbeddedImports map[string]struct{}
+	Skip            bool
 }
 
 type Field struct {
@@ -230,15 +230,4 @@ func findTypeDef(pkg string, strct string) (types.Object, error) {
 	}
 
 	return nil, fmt.Errorf("struct %s not found in package %s", strct, pkg)
-}
-
-func SplitPackageUID(uid string) (pkg, strct string, err error) {
-	parts := strings.Split(uid, ".")
-	if len(parts) < 2 {
-		return "", "", fmt.Errorf("Invalid struct identifier: %s", uid)
-	}
-
-	pkg = strings.Join(parts[:len(parts)-1], ".")
-	strct = parts[len(parts)-1]
-	return
 }

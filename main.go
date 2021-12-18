@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
-	"go/format"
-	"io"
 	"os"
 	"strings"
 
@@ -15,9 +12,13 @@ import (
 )
 
 type Config struct {
-	Output      OutputConfig
+	Output struct {
+		Models      OutputConfig
+		Collections OutputConfig
+	}
+
 	Primitives  []string
-	Collections map[string]CollectionConfig
+	Collections map[string]string
 }
 
 type OutputConfig struct {
@@ -25,25 +26,11 @@ type OutputConfig struct {
 	Filename string
 }
 
-type CollectionConfig struct {
-	Model string
-}
-
-type TemplateInput struct {
-	PackageName string
-	Collections map[string]CollectionInput
-	Structs     []codegen.Strct
-	Imports     []string
-}
-
-type CollectionInput struct {
-	ModelType      string
-	CollectionType string
-	IDType         string
-	Imports        []string
-}
-
 var defaultPrimitives = []string{
+	"time.Time",
+}
+
+var defaultModelImports = []string{
 	"time",
 }
 
@@ -62,27 +49,36 @@ func main() {
 		panic(fmt.Sprintf("Failed to parse config: %s", err.Error()))
 	}
 
-	modelImports := map[string]struct{}{}
+	collections := templates.CollectionsInput{
+		PackageName: config.Output.Collections.Package,
+		Collections: make(map[string]templates.CollectionInput),
+		Imports:     make([]string, 0),
+	}
 
-	input := &TemplateInput{
-		PackageName: config.Output.Package,
-		Collections: map[string]CollectionInput{},
-		Structs:     []codegen.Strct{},
-		Imports:     []string{}}
+	models := templates.ModelsInput{
+		PackageName: config.Output.Models.Package,
+		Structs:     make([]codegen.Strct, 0),
+		Imports:     make([]string, 0),
+	}
+
+	collectionImports := map[string]struct{}{}
+	for _, imp := range defaultModelImports {
+		collectionImports[imp] = struct{}{}
+	}
 
 	// If we just mark all primitives as already
 	// known, they will be skipped when we reach them
 	strcts := map[string]codegen.Strct{}
 	for _, s := range config.Primitives {
-		strcts[s] = codegen.Strct{}
+		strcts[s] = codegen.Strct{Skip: true}
 	}
 
 	for _, s := range defaultPrimitives {
-		strcts[s] = codegen.Strct{}
+		strcts[s] = codegen.Strct{Skip: true}
 	}
 
 	for colName, col := range config.Collections {
-		pkg, name, err := splitPackageUID(col.Model)
+		pkg, name, err := splitPackageUID(col)
 		if err != nil {
 			panic(err)
 		}
@@ -94,38 +90,44 @@ func main() {
 
 		// Find our struct from the struct list. It's guaranteed to
 		// be there if the previous function did not error out.
-		strct := strcts[col.Model]
+		strct := strcts[col]
 		idField := findIDType(strct)
+		collectionImports[strct.StructImport] = struct{}{}
 
 		collectionType := fmt.Sprintf("%sCollection", strings.Title(colName))
 
-		result := CollectionInput{
+		result := templates.CollectionInput{
 			ModelType:      modelType,
 			IDType:         idField.Type,
 			CollectionType: collectionType,
 		}
 
 		for imp := range idField.Imports {
-			result.Imports = append(result.Imports, imp)
+			collectionImports[imp] = struct{}{}
 		}
 
-		input.Collections[colName] = result
+		collections.Collections[colName] = result
 	}
 
 	for _, s := range strcts {
-		input.Structs = append(input.Structs, s)
+		if s.Skip {
+			continue
+		}
+
+		models.Structs = append(models.Structs, s)
 	}
 
-	for imp := range modelImports {
-		input.Imports = append(input.Imports, imp)
+	for imp := range collectionImports {
+		collections.Imports = append(collections.Imports, imp)
 	}
 
-	outputFile, err := os.Create(config.Output.Filename)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create output file: %s", err.Error()))
+	if err := templates.WriteCollections(collections,
+		config.Output.Collections.Filename); err != nil {
+		panic(err)
 	}
 
-	if err := writeFormattedOutput(input, outputFile); err != nil {
+	if err := templates.WriteModels(models,
+		config.Output.Models.Filename); err != nil {
 		panic(err)
 	}
 }
@@ -146,21 +148,6 @@ func findIDType(strct codegen.Strct) codegen.Field {
 		Type: "primitive.ObjectID",
 		Imports: map[string]struct{}{
 			"go.mongodb.org/mongo-driver/bson/primitive": {}}}
-}
-
-func writeFormattedOutput(input *TemplateInput, out io.Writer) error {
-	buf := new(bytes.Buffer)
-	if err := templates.Tmpl.Execute(buf, input); err != nil {
-		return err
-	}
-
-	formatted, err := format.Source(buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	_, err = out.Write(formatted)
-	return err
 }
 
 func splitPackageUID(uid string) (pkg, strct string, err error) {

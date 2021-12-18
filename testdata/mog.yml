@@ -1,12 +1,14 @@
 output:
-  package: mongogen
-  filename: mongogen/gen.go
+  models:
+    package: modelgen
+    filename: modelgen/gen.go
+  collections:
+    package: colgen
+    filename: colgen/gen.go
 
 primitives:
 - github.com/happenslol/mog/testdata.CustomID
 
 collections:
-  authors:
-    model: github.com/happenslol/mog/testdata.Author
-  books:
-    model: github.com/happenslol/mog/testdata.Book
+  authors: github.com/happenslol/mog/testdata.Author
+  books: github.com/happenslol/mog/testdata.Book
