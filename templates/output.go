@@ -62,5 +62,4 @@ func ensureContainingDir(filename string) {
 				path, err.Error())
 		}
 	}
-
 }
