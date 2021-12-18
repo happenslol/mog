@@ -2,10 +2,19 @@ package testdata
 
 import (
 	"time"
+
+	"github.com/happenslol/mog/colgen"
 )
 
+type CustomID struct {
+	Domain string
+	ID     string
+}
+
+type PageCount int
+
 type Author struct {
-	ID       string `bson:"_id"`
+	ID       CustomID `bson:"_id"`
 	Name     string
 	Password string `bson:"-"`
 	Age      uint
@@ -15,7 +24,7 @@ type Author struct {
 }
 
 type Book struct {
-	ID    string `bson:"_id"`
+	ID    CustomID `bson:"_id"`
 	Name  string
-	Pages uint
+	Pages PageCount
 }
