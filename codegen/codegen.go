@@ -116,9 +116,12 @@ func (c *Config) Generate() {
 
 		collectionType := fmt.Sprintf("%sCollection", strings.Title(colName))
 
+		idParts := strings.Split(idField.Type, "/")
+		idType := idParts[len(idParts)-1]
+
 		result := Collection{
 			ModelType:      modelType,
-			IDType:         idField.Type,
+			IDType:         idType,
 			CollectionType: collectionType,
 		}
 
