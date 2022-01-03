@@ -54,8 +54,11 @@ func LoadModel(
 
 		strctType, ok := strct.Underlying().(*types.Struct)
 		if !ok {
-			panic(fmt.Sprintf("Underlying type for %s was %T instead of struct",
-				strct.String(), strct.Underlying()))
+			// TODO: For now we assume here that we unpacked an aliased
+			// basic type or other pointer type. It's also possible that we
+			// have a double aliased struct though, so ideally we should try
+			// to "unpack" it.
+			continue
 		}
 
 		fldQueue := []fieldWithTag{}

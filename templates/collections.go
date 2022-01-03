@@ -64,10 +64,10 @@ func (c *[[ $col.CollectionType ]]) BulkWrite(ctx context.Context, models []mong
 }
 
 func (c *[[ $col.CollectionType ]]) InsertOne(ctx context.Context, document *[[ $col.ModelType ]],
-	opts ...*options.InsertOneOptions) ([[ $col.IDType ]], error) {
+	opts ...*options.InsertOneOptions) (insertedID [[ $col.IDType ]], err error) {
 	result, err := c.collection.InsertOne(ctx, document, opts...)
 	if err != nil {
-		return mogutil.Zero([[ $col.IDType ]]).([[ $col.IDType ]]), err
+		return
 	}
 
 	return result.InsertedID.([[ $col.IDType ]]), nil
@@ -114,20 +114,20 @@ func (c *[[ $col.CollectionType ]]) DeleteMany(ctx context.Context, filter inter
 }
 
 func (c *[[ $col.CollectionType ]]) UpdateByID(ctx context.Context, id [[ $col.IDType ]], update interface{},
-	opts ...*options.UpdateOptions) ([[ $col.IDType ]], error) {
+	opts ...*options.UpdateOptions) (updatedID [[ $col.IDType ]], err error) {
 	result, err := c.collection.UpdateByID(ctx, id, update, opts...)
 	if err != nil {
-		return mogutil.Zero([[ $col.IDType ]]).([[ $col.IDType ]]), err
+		return
 	}
 
 	return result.UpsertedID.([[ $col.IDType ]]), nil
 }
 
 func (c *[[ $col.CollectionType ]]) UpdateOne(ctx context.Context, filter interface{}, update interface{},
-	opts ...*options.UpdateOptions) ([[ $col.IDType ]], error) {
+	opts ...*options.UpdateOptions) (updatedID [[ $col.IDType ]], err error) {
 	result, err := c.collection.UpdateOne(ctx, filter, update, opts...)
 	if err != nil {
-		return mogutil.Zero([[ $col.IDType ]]).([[ $col.IDType ]]), err
+		return
 	}
 
 	return result.UpsertedID.([[ $col.IDType ]]), nil
@@ -135,12 +135,12 @@ func (c *[[ $col.CollectionType ]]) UpdateOne(ctx context.Context, filter interf
 
 func (c *[[ $col.CollectionType ]]) UpdateMany(ctx context.Context, filter interface{}, update interface{},
 	opts ...*options.UpdateOptions) (*mongo.UpdateResult, error) {
-	return nil, nil
+	return c.collection.UpdateMany(ctx, filter, update, opts...)
 }
 
 func (c *[[ $col.CollectionType ]]) ReplaceOne(ctx context.Context, filter interface{},
 	replacement *[[ $col.ModelType ]], opts ...*options.ReplaceOptions) (*mongo.UpdateResult, error) {
-	return nil, nil
+	return c.collection.ReplaceOne(ctx, filter, replacement, opts...)
 }
 
 func (c *[[ $col.CollectionType ]]) Aggregate(ctx context.Context, pipeline interface{},

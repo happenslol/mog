@@ -1,10 +1,6 @@
 package testdata
 
-import (
-	"time"
-
-	"github.com/happenslol/mog/colgen"
-)
+import "time"
 
 type CustomID struct {
 	Domain string
