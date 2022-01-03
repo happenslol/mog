@@ -64,17 +64,17 @@ func (c *[[ $col.CollectionType ]]) BulkWrite(ctx context.Context, models []mong
 }
 
 func (c *[[ $col.CollectionType ]]) InsertOne(ctx context.Context, document *[[ $col.ModelType ]],
-	opts ...*options.InsertOneOptions) (insertedID [[ $col.IDType ]], err error) {
+	opts ...*options.InsertOneOptions) (insertedID interface{}, err error) {
 	result, err := c.collection.InsertOne(ctx, document, opts...)
 	if err != nil {
 		return
 	}
 
-	return result.InsertedID.([[ $col.IDType ]]), nil
+	return result.InsertedID, nil
 }
 
 func (c *[[ $col.CollectionType ]]) InsertMany(ctx context.Context, documents []*[[ $col.ModelType ]],
-	opts ...*options.InsertManyOptions) ([][[ $col.IDType ]], error) {
+	opts ...*options.InsertManyOptions) ([]interface{}, error) {
 	interfaceDocs := make([]interface{}, len(documents))
 	for i, d := range documents {
 		interfaceDocs[i] = d
@@ -85,12 +85,7 @@ func (c *[[ $col.CollectionType ]]) InsertMany(ctx context.Context, documents []
 		return nil, err
 	}
 
-	inserted := make([][[ $col.IDType ]], len(result.InsertedIDs))
-	for i, id := range result.InsertedIDs {
-		inserted[i] = id.([[ $col.IDType ]])
-	}
-
-	return inserted, nil
+	return result.InsertedIDs, nil
 }
 
 func (c *[[ $col.CollectionType ]]) DeleteOne(ctx context.Context, filter interface{},
@@ -114,23 +109,23 @@ func (c *[[ $col.CollectionType ]]) DeleteMany(ctx context.Context, filter inter
 }
 
 func (c *[[ $col.CollectionType ]]) UpdateByID(ctx context.Context, id [[ $col.IDType ]], update interface{},
-	opts ...*options.UpdateOptions) (updatedID [[ $col.IDType ]], err error) {
+	opts ...*options.UpdateOptions) (updatedID interface{}, err error) {
 	result, err := c.collection.UpdateByID(ctx, id, update, opts...)
 	if err != nil {
 		return
 	}
 
-	return result.UpsertedID.([[ $col.IDType ]]), nil
+	return result.UpsertedID, nil
 }
 
 func (c *[[ $col.CollectionType ]]) UpdateOne(ctx context.Context, filter interface{}, update interface{},
-	opts ...*options.UpdateOptions) (updatedID [[ $col.IDType ]], err error) {
+	opts ...*options.UpdateOptions) (updatedID interface{}, err error) {
 	result, err := c.collection.UpdateOne(ctx, filter, update, opts...)
 	if err != nil {
 		return
 	}
 
-	return result.UpsertedID.([[ $col.IDType ]]), nil
+	return result.UpsertedID, nil
 }
 
 func (c *[[ $col.CollectionType ]]) UpdateMany(ctx context.Context, filter interface{}, update interface{},
